@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 2%;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #ffff00
+}
+
+body {
+  overflow: hidden;
+}
+</style>
+</head>
+
+<body> 
+<div id="info">hw5-2 & hw5-3<br>
+<div id = 'count'></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/109/three.min.js"></script>
+<script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script src="https://raw.githack.com/mrdoob/three.js/dev/examples/js/geometries/TeapotBufferGeometry.js"></script>
+
+<script id="myVertexShader" type="x-shader/x-vertex">
+  
+    varying vec4 eyepos;
+    uniform vec3 lightpos;
+    varying vec3 eyelight;
+    varying vec3 eyenormal;
+
+  void main() {
+	gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+	eyepos = modelViewMatrix * vec4(position, 1.0);
+    vec4 eyelightpos= viewMatrix * vec4(lightpos, 1.0);
+    eyelight = normalize(eyelightpos.xyz - eyepos.xyz);
+    eyenormal = normalMatrix * normal;
+  }
+</script>
+
+<script id="myFragmentShader" type="x-shader/x-fragment">
+ 
+	uniform float opacity;
+	uniform vec3 ccool; 
+	uniform vec3 cwarm;
+	varying vec4 eyepos;
+	varying vec3 eyelight;
+	varying vec3 eyenormal;
+  
+	void main() {
+        float intensity = dot(normalize(eyenormal), normalize(eyelight)); 
+		
+        vec3 diffuse = intensity*vec3(0,0,0);
+        vec3 high = normalize(-normalize (eyepos.xyz) + normalize(eyelight));   
+        vec3 specular = pow(dot(eyenormal, high), 10.0) *vec3 (1,0,0);
+        
+		float c = (1. + intensity)/2.;
+		
+        gl_FragColor = vec4(mix(ccool, cwarm, c) + specular, opacity);
+	}
+
+	
+</script>
+
+<script>
+
+class Teapot{
+
+	constructor(number) {
+      this.obj = this.bulidTeapot(number);
+	  this.life = 100;
+	  this.angle = 0;
+	  this.on = true;
+	  this.name = number;  
+    }
+	
+	update() {
+		this.angle += this.life*0.005;
+		if(this.life > 0 && !this.on){
+			this.life = 100;
+			this.teapotMaterial.uniforms.lightpos.value.copy(pointLight.position);
+		}
+		else if(this.life > 0 && this.on){
+			this.life -= 0.3;
+			this.teapotMaterial.uniforms.lightpos.value.copy(pointLight.position);
+		}	
+		this.teapotMaterial.uniforms.opacity.value = this.life * 0.01;
+	}
+	
+	getlife() {
+	  return this.life;
+	}
+
+    getangle() {
+		return this.angle;
+	}
+
+	getisOn() {
+		return this.on;
+    }
+
+	getname() {
+		return this.name;
+	}
+	
+	toggle() {
+		this.on = !this.on;
+		this.update();
+	}
+	
+	bulidTeapot(number) {
+	
+		let alpha = 0.25, beta = 0.5, y = 0.3, b = 0.55;
+    	let cblue = new THREE.Vector3(0, 0, b);
+		let cyellow = new THREE.Vector3(y, y, 0);
+		let cd = new THREE.Vector3(33/255, 111/255, 237/255);
+		let ccool = cd.clone().multiplyScalar(alpha).add(cblue);
+		let cwarm = cd.clone().multiplyScalar(beta).add(cyellow);
+	
+	
+		this.teapotMaterial = new THREE.ShaderMaterial({
+		uniforms: {
+		  lightpos: {type:'v3', value: new THREE.Vector3(0, 30, 20) },
+		  opacity: {type: 'f', value: 1.0},
+		  ccool: {type: 'v3', value: ccool},
+		  cwarm: {type: 'v3', value: cwarm},			  
+		},
+		vertexShader: document.getElementById('myVertexShader').textContent,
+		fragmentShader: document.getElementById('myFragmentShader').textContent
+	  });
+	   this.teapotMaterial.transparent = true; 
+	   let mesh = new THREE.Mesh(new THREE.TeapotBufferGeometry(10), this.teapotMaterial);
+	   mesh.name = number;
+	   mesh.life = 100;
+	   return mesh;
+	}
+}
+
+var scene, renderer, camera;
+var angle = 0;
+var teapotMaterial;
+var number = 0
+var raycaster;
+var pickables = [];
+var mouse = new THREE.Vector2();
+var teapots = [];
+var pointLight;
+var picked = [];
+init();
+animate();
+
+function init() {
+	var width = window.innerWidth;
+	var height = window.innerHeight;
+
+	renderer = new THREE.WebGLRenderer({
+		antialias: true
+	});
+	renderer.setSize(width, height);
+	renderer.setClearColor(0x888888);
+	document.body.appendChild(renderer.domElement);
+	scene = new THREE.Scene();
+
+	camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+	camera.position.set(200, 200, 200);
+	camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+	controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+	pointLight = new THREE.PointLight(0xffffff);
+	pointLight.position.set(125, 125, 125);
+	scene.add(pointLight);
+	scene.add (new THREE.PointLightHelper (pointLight, 10));
+	var ambientLight = new THREE.AmbientLight(0x111111);
+	scene.add(ambientLight);
+	
+	mesh = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshNormalMaterial({
+		transparent: true,
+		opacity: 0.8,
+		visible: true
+	}));
+
+	raycaster = new THREE.Raycaster();
+	document.addEventListener('mousedown', onDocumentMouseDown, false);
+  
+	let geometryplane = new THREE.PlaneGeometry( 200, 200 );
+	let materialplane = new THREE.MeshPhongMaterial( {side: THREE.DoubleSide, color: 'black'} );
+	let plane = new THREE.Mesh( geometryplane, materialplane );
+	plane.rotation.x = Math.PI/2;
+	plane.name = 'plane';
+	scene.add (plane);
+	
+	let geometrycube1 = new THREE.BoxBufferGeometry( 50, 20, 50 );
+	let materialcube1 = new THREE.MeshPhongMaterial( {color:'silver'} );
+	let cube1 = new THREE.Mesh( geometrycube1, materialcube1 );
+	cube1.position.set(-75, 10, -80);
+	cube1.name = 'cube1';
+	scene.add(cube1);
+	
+	let geometrycube2 = new THREE.BoxBufferGeometry( 60, 20, 200 );
+	let materialcube2 = new THREE.MeshPhongMaterial( {color:'silver'} );
+	let cube2 = new THREE.Mesh( geometrycube2, materialcube2);
+	cube2.position.set(70, 10, 0);
+	cube2.name = 'cube2';
+	scene.add(cube2);
+	
+	pickables = [plane, cube1, cube2];
+}
+
+function onDocumentMouseDown(event) {
+
+	event.preventDefault();
+	mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+	mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  // find intersections
+	raycaster.setFromCamera(mouse, camera);
+	var intersects = raycaster.intersectObjects(pickables,true);
+  
+	if (intersects.length > 0) {
+		document.body.style.cursor = 'pointer';
+		let pick = intersects[0].object.name;
+		
+		if(pick == 'plane' || pick == 'cube1' || pick == 'cube2'){
+		document.body.style.cursor = 'pointer';
+		let point = new Teapot(number);
+		teapots.push(point);  
+		point.obj.position.copy(intersects[0].point);
+		point.obj.position.y += 10;
+		scene.add(point.obj);  
+		pickables.push(teapots[teapots.length - 1].obj);
+		number++;
+		}
+
+		else {
+		document.body.style.cursor = 'pointer';
+			let picked = intersects[0];
+			for(let i=0;i < teapots.length;i++){
+			
+				if(picked.object.name == teapots[i].obj.name){
+					teapots[i].toggle();
+				}
+			}
+		}
+	}	
+	else
+		document.body.style.cursor = 'auto';
+}
+
+function animate() {
+	$('#count').text ('number of teapot: ' + teapots.length)
+	teapots.forEach (function (teapot) {
+		teapot.update();
+	})
+
+	for (let i = 0; i < teapots.length; i++) { 
+		if(teapots[i].getisOn() == true) {
+			teapots[i].obj.rotation.y = teapots[i].getangle();
+			if(teapots[i].getlife() <= 0){ 
+				let number = teapots[i].obj.name;
+				scene.remove(teapots[i].obj);
+				teapots.splice(i,1);
+				pickables.splice(i+3,1);
+			}
+		}
+	}
+	angle += 0.01;
+	pointLight.position.set(60 * Math.cos(angle), 100, 40 * Math.sin(angle));
+  
+	requestAnimationFrame(animate);
+	renderer.render(scene, camera);
+}
+
+</script>
+</body>
+
+</html>
