@@ -222,9 +222,7 @@ function animate() {
   
   if (movingTeapot !== undefined) {
 	movingTeapot.position.set (70*Math.cos(angle), 0, 70*Math.sin(angle));
-	
-	teapotMaterial.uniforms.lightpos.value.copy(movingTeapot.position);
-	teapotMaterial.uniforms.fragmentShader.value = Math.abs(Math.sin (angle));
+
   }
   
   requestAnimationFrame(animate);
